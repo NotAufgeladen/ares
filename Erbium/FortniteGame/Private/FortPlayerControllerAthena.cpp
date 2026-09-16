@@ -15,6 +15,8 @@
 #include "../Public/FortWeapon.h"
 #include "../Public/FortVehicleSeatWeaponComponent.h"
 
+#include <cmath>
+
 void AFortPlayerControllerAthena::GetPlayerViewPoint(AFortPlayerControllerAthena* PlayerController, FVector& Loc, FRotator& Rot)
 {
     if (auto ViewTarget = PlayerController->GetViewTarget())
@@ -453,6 +455,59 @@ uint64_t CantBuild_ = 0;
 uint64_t CanAffordToPlaceBuildableClass_;
 uint64_t PayBuildableClassPlacementCost_;
 uint64_t CanPlaceBuildableClassInStructuralGrid_;
+
+struct FBuildingBounds
+{
+    uint8 Data[0x38]{};
+
+    FVector GetMin() const
+    {
+        FVector Min;
+        memcpy(&Min, Data, FVector::Size());
+        return Min;
+    }
+
+    FVector GetMax() const
+    {
+        FVector Max;
+        memcpy(&Max, Data + FVector::Size(), FVector::Size());
+        return Max;
+    }
+
+    bool IsValid() const
+    {
+        return Data[FVector::Size() * 2] != 0;
+    }
+};
+
+bool IsPawnInBuildFootprint(TSubclassOf<AActor> BuildingClass, const FVector& BuildLoc, const FRotator& BuildRot, const FVector& PawnLoc)
+{
+    auto DefaultBuilding = static_cast<ABuildingSMActor*>(BuildingClass->GetDefaultObj());
+    auto GetComponentsBoundingBox = DefaultBuilding->GetFunction("GetComponentsBoundingBox");
+
+    if (GetComponentsBoundingBox)
+    {
+        const FBuildingBounds Bounds = DefaultBuilding->Call<FBuildingBounds>(GetComponentsBoundingBox, false, false);
+        const FVector Min = Bounds.GetMin();
+        const FVector Max = Bounds.GetMax();
+
+        if (Bounds.IsValid() && Min.X < Max.X && Min.Y < Max.Y)
+        {
+            const double YawRadians = BuildRot.Yaw * (3.14159265358979323846 / 180.0);
+            const double DeltaX = PawnLoc.X - BuildLoc.X;
+            const double DeltaY = PawnLoc.Y - BuildLoc.Y;
+            const double LocalX = std::cos(YawRadians) * DeltaX + std::sin(YawRadians) * DeltaY;
+            const double LocalY = -std::sin(YawRadians) * DeltaX + std::cos(YawRadians) * DeltaY;
+
+            return LocalX >= Min.X && LocalX <= Max.X && LocalY >= Min.Y && LocalY <= Max.Y;
+        }
+    }
+
+    // Fallback for builds without a component-bounds UFunction.
+    constexpr double HalfBuildingTileSize = 256.0;
+    return std::abs(BuildLoc.X - PawnLoc.X) <= HalfBuildingTileSize && std::abs(BuildLoc.Y - PawnLoc.Y) <= HalfBuildingTileSize;
+}
+
 void AFortPlayerControllerAthena::ServerCreateBuildingActor(UObject* Context, FFrame& Stack)
 {
     TSubclassOf<AActor> BuildingClass;
@@ -553,15 +608,8 @@ void AFortPlayerControllerAthena::ServerCreateBuildingActor(UObject* Context, FF
     if (!BuildingClass)
         return;
 
-    // A standard building tile covers a 512 x 512 unit footprint. Do not let a
-    // player create a building in the tile currently occupied by their pawn.
-    if (PlayerController->MyFortPawn)
-    {
-        constexpr double HalfBuildingTileSize = 256.0;
-        const FVector PlayerLocation = PlayerController->MyFortPawn->K2_GetActorLocation();
-        if (std::abs(BuildLoc.X - PlayerLocation.X) <= HalfBuildingTileSize && std::abs(BuildLoc.Y - PlayerLocation.Y) <= HalfBuildingTileSize)
-            return;
-    }
+    if (PlayerController->MyFortPawn && IsPawnInBuildFootprint(BuildingClass, BuildLoc, BuildRot, PlayerController->MyFortPawn->K2_GetActorLocation()))
+        return;
 
     UFortWorldItem* Item = nullptr;
     auto Resource = UFortKismetLibrary::K2_GetResourceItemDefinition(((ABuildingSMActor*)BuildingClass->GetDefaultObj())->ResourceType);
