@@ -608,7 +608,8 @@ void AFortPlayerControllerAthena::ServerCreateBuildingActor(UObject* Context, FF
     if (!BuildingClass)
         return;
 
-    if (PlayerController->MyFortPawn && IsPawnInBuildFootprint(BuildingClass, BuildLoc, BuildRot, PlayerController->MyFortPawn->K2_GetActorLocation()))
+    auto PlayerPawn = PlayerController->Pawn ? PlayerController->Pawn : PlayerController->MyFortPawn;
+    if (PlayerPawn && IsPawnInBuildFootprint(BuildingClass, BuildLoc, BuildRot, PlayerPawn->K2_GetActorLocation()))
         return;
 
     UFortWorldItem* Item = nullptr;
