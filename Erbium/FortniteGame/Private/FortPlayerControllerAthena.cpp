@@ -553,6 +553,16 @@ void AFortPlayerControllerAthena::ServerCreateBuildingActor(UObject* Context, FF
     if (!BuildingClass)
         return;
 
+    // A standard building tile covers a 512 x 512 unit footprint. Do not let a
+    // player create a building in the tile currently occupied by their pawn.
+    if (PlayerController->MyFortPawn)
+    {
+        constexpr double HalfBuildingTileSize = 256.0;
+        const FVector PlayerLocation = PlayerController->MyFortPawn->K2_GetActorLocation();
+        if (std::abs(BuildLoc.X - PlayerLocation.X) <= HalfBuildingTileSize && std::abs(BuildLoc.Y - PlayerLocation.Y) <= HalfBuildingTileSize)
+            return;
+    }
+
     UFortWorldItem* Item = nullptr;
     auto Resource = UFortKismetLibrary::K2_GetResourceItemDefinition(((ABuildingSMActor*)BuildingClass->GetDefaultObj())->ResourceType);
     if (!FConfiguration::bInfiniteMats)
