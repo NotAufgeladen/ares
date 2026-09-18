@@ -1,15 +1,18 @@
 #include "pch.h"
 #include "../Public/GUI.h"
-#include "../../FortniteGame/Public/BattleRoyaleGamePhaseLogic.h"
-#include "../../FortniteGame/Public/BuildingSMActor.h"
+// The embedded font data lives in FontData.h so it is not compiled into every
+// translation unit that includes GUI.h.
+#include "../Public/FontData.h"
+#include "../Public/AdminActions.h"
+#include "../Public/Matchmaker.h"
+#include "../../FortniteGame/Public/FortGameMode.h"
+#include "../../FortniteGame/Public/FortPlaylistAthena.h"
 #include "../../ImGui/imgui.h"
 #include "../../ImGui/imgui_impl_dx11.h"
 #include "../../ImGui/imgui_impl_win32.h"
 #include "../Public/Configuration.h"
 #include "../Public/Events.h"
 #include <d3d11.h>
-#include <fstream>
-#include <sstream>
 #pragma comment(lib, "d3d11.lib")
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -56,8 +59,8 @@ void GUI::Init()
 
     wchar_t buffer[67];
     swprintf_s(buffer,
-               VersionInfo.EngineVersion >= 5.0 ? L"Erbium (FN %.2f, UE %.1f)"
-                                                : (VersionInfo.FortniteVersion >= 5.00 || VersionInfo.FortniteVersion < 1.2 ? L"Erbium (FN %.2f, UE %.2f)" : L"Erbium (FN %.1f, UE %.2f)"),
+               VersionInfo.EngineVersion >= 5.0 ? L"ARES (FN %.2f, UE %.1f)"
+                                                : (VersionInfo.FortniteVersion >= 5.00 || VersionInfo.FortniteVersion < 1.2 ? L"ARES (FN %.2f, UE %.2f)" : L"ARES (FN %.1f, UE %.2f)"),
                VersionInfo.FortniteVersion, VersionInfo.EngineVersion);
     auto hWnd = CreateWindow(wc.lpszClassName, buffer, WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_THICKFRAME, 100, 100, (int)(WindowWidth * main_scale), (int)(WindowHeight * main_scale), nullptr, nullptr, nullptr,
                              nullptr);
@@ -219,7 +222,7 @@ void GUI::Init()
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(WindowWidth * main_scale, WindowHeight * main_scale), ImGuiCond_Always);
 
-        ImGui::Begin("Erbium", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
+        ImGui::Begin("ARES", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
 
         static int SelectedUI = 0;
         static int hasEvent = 0;
@@ -270,10 +273,6 @@ void GUI::Init()
                 ImGui::EndTabItem();
             }
 
-            // do not remove
-            if (ImGui::TabItemButton("Made by Sarah (@ustruct on Discord)"))
-                ImGui::EndTabItem();
-
             ImGui::EndTabBar();
         }
 
@@ -287,10 +286,10 @@ void GUI::Init()
             ImGui::Text((std::string("Status: ") + (gsStatus == NotReady ? "Setting up the server..." : (gsStatus == Joinable ? "Joinable!" : "Match Started"))).c_str());
             if (gsStatus >= Joinable)
             {
-                ImGui::Text((std::string("Player Count: ") + std::to_string(GameMode->HasAlivePlayers() ? GameMode->AlivePlayers.Num() : 0)).c_str());
+                ImGui::Text((std::string("Player Count: ") + std::to_string(GameMode && GameMode->HasAlivePlayers() ? GameMode->AlivePlayers.Num() : 0)).c_str());
                 ImGui::Text((std::string("Port: ") + std::to_string(FConfiguration::Port)).c_str());
 
-                auto Playlist = VersionInfo.FortniteVersion >= 3.5 && GameMode->HasWarmupRequiredPlayerCount()
+                auto Playlist = GameMode && VersionInfo.FortniteVersion >= 3.5 && GameMode->HasWarmupRequiredPlayerCount()
                                     ? (GameMode->GameState->HasCurrentPlaylistInfo() ? GameMode->GameState->CurrentPlaylistInfo.BasePlaylist : GameMode->GameState->CurrentPlaylistData)
                                     : nullptr;
 
@@ -311,17 +310,7 @@ void GUI::Init()
                 ImGui::Checkbox("Lategame", &FConfiguration::bLateGame);
 
             if (gsStatus == Joinable && ImGui::Button("Start Bus Early"))
-            {
-                if (UFortGameStateComponent_BattleRoyaleGamePhaseLogic::GetDefaultObj())
-                {
-                    UFortGameStateComponent_BattleRoyaleGamePhaseLogic::bStartAircraft = true;
-                    // auto GamePhaseLogic = UFortGameStateComponent_BattleRoyaleGamePhaseLogic::Get();
-
-                    // GamePhaseLogic->StartAircraftPhase();
-                }
-                else
-                    UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), FString(L"startaircraft"), nullptr);
-            }
+                AdminActions::StartBusEarly();
 
             ImGui::InputText("Console Command", commandBuffer, 1024);
 
@@ -335,62 +324,16 @@ void GUI::Init()
             break;
         case 1:
             if (ImGui::Button("Pause Safe Zone"))
-            {
-                UFortGameStateComponent_BattleRoyaleGamePhaseLogic::bPausedZone = true;
-                if (GameMode->HasbSafeZonePaused())
-                    GameMode->bSafeZonePaused = true;
-                UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), FString(L"pausesafezone"), nullptr);
-            }
+                AdminActions::PauseSafeZone();
 
             if (ImGui::Button("Resume Safe Zone"))
-            {
-                UFortGameStateComponent_BattleRoyaleGamePhaseLogic::bPausedZone = false;
-                if (GameMode->HasbSafeZonePaused())
-                    GameMode->bSafeZonePaused = false;
-                UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), FString(L"startsafezone"), nullptr);
-            }
+                AdminActions::ResumeSafeZone();
 
             if (ImGui::Button("Skip Safe Zone"))
-            {
-                if (GameMode->HasSafeZoneIndicator())
-                {
-                    if (GameMode->SafeZoneIndicator)
-                    {
-                        GameMode->SafeZoneIndicator->SafeZoneStartShrinkTime = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
-                        GameMode->SafeZoneIndicator->SafeZoneFinishShrinkTime = GameMode->SafeZoneIndicator->SafeZoneStartShrinkTime + 0.05f;
-                    }
-                }
-                else
-                {
-                    auto GamePhaseLogic = UFortGameStateComponent_BattleRoyaleGamePhaseLogic::Get(UWorld::GetWorld());
-
-                    if (GamePhaseLogic->SafeZoneIndicator)
-                    {
-                        GamePhaseLogic->SafeZoneIndicator->SafeZoneStartShrinkTime = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
-                        GamePhaseLogic->SafeZoneIndicator->SafeZoneFinishShrinkTime = GamePhaseLogic->SafeZoneIndicator->SafeZoneStartShrinkTime + 0.05f;
-                    }
-                }
-
-                // UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), FString(L"skipsafezone"), nullptr);
-            }
+                AdminActions::SkipSafeZone();
 
             if (ImGui::Button("Start Shrinking Safe Zone"))
-            {
-                if (GameMode->HasSafeZoneIndicator())
-                {
-                    if (GameMode->SafeZoneIndicator)
-                        GameMode->SafeZoneIndicator->SafeZoneStartShrinkTime = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
-                }
-                else
-                {
-                    auto GamePhaseLogic = UFortGameStateComponent_BattleRoyaleGamePhaseLogic::Get(UWorld::GetWorld());
-
-                    if (GamePhaseLogic->SafeZoneIndicator)
-                        GamePhaseLogic->SafeZoneIndicator->SafeZoneStartShrinkTime = (float)UGameplayStatics::GetTimeSeconds(UWorld::GetWorld());
-                }
-
-                // UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), FString(L"startshrinksafezone"), nullptr);
-            }
+                AdminActions::StartShrinkingSafeZone();
 
             break;
         case 2:
@@ -407,112 +350,18 @@ void GUI::Init()
             ImGui::SliderInt("Tick Rate:", &FConfiguration::MaxTickRate, 30, 120);
 
             if (ImGui::Button("Reset Builds"))
-            {
-                TArray<ABuildingSMActor*> Builds;
-                Utils::GetAll<ABuildingSMActor>(Builds);
-
-                for (auto& Build : Builds)
-                    if (Build->bPlayerPlaced)
-                        Build->K2_DestroyActor();
-
-                Builds.Free();
-            }
+                AdminActions::ResetBuilds();
 
             if (ImGui::Button("Destroy Floor Loot"))
-            {
-                TArray<AFortPickupAthena*> Pickups;
-                Utils::GetAll<AFortPickupAthena>(Pickups);
-
-                for (auto& Pickup : Pickups)
-                    Pickup->K2_DestroyActor();
-
-                Pickups.Free();
-            }
+                AdminActions::DestroyFloorLoot();
             break;
         case 4:
             static auto PlaylistClass = UFortPlaylistAthena::StaticClass();
 
             if (ImGui::Button("Dump Items"))
-            {
-                std::stringstream ss;
-
-                ss << "Generated by Erbium (https://github.com/plooshi/Erbium)\n";
-                char version[6];
-
-                sprintf_s(version, VersionInfo.FortniteVersion >= 5.00 || VersionInfo.FortniteVersion < 1.2 ? "%.2f" : "%.1f", VersionInfo.FortniteVersion);
-                ss << "Fortnite version: " << version << "\n\n";
-
-                auto RarityEnum = EFortRarity::StaticEnum();
-                for (int i = 0; i < TUObjectArray::Num(); i++)
-                {
-                    auto Object = TUObjectArray::GetObjectByIndex(i);
-                    if (!Object || !Object->Class || Object->IsDefaultObject() || !Object->IsA<UFortWorldItemDefinition>())
-                        continue;
-                    auto Item = (UFortWorldItemDefinition*)Object;
-
-                    FString Name = UKismetTextLibrary::Conv_TextToString(Item->HasDisplayName() ? Item->DisplayName : Item->ItemName);
-
-                    ss << "- " << UKismetSystemLibrary::GetPathName(Item).ToString() << "\n";
-                    ss << "-     Name: " << (Name.GetData() ? Name.ToString() : "None") << "\n";
-
-                    auto Names = *(TArray<TPair<FName, int64>>*)(__int64(RarityEnum) + 0x40);
-
-                    for (int i = 0; i < Names.Num(); i++)
-                    {
-                        auto& Pair = Names[i];
-                        auto& Name = Pair.Key();
-                        auto& Value = Pair.Value();
-
-                        if (Value == Item->Rarity)
-                        {
-                            auto str = Name.ToString();
-                            auto colcolIdx = str.find_last_of("::");
-
-                            auto RealName = colcolIdx == -1 ? str : str.substr(colcolIdx + 1);
-
-                            ss << "-     Rarity: " << RealName << "\n";
-                        }
-                    }
-                }
-
-                std::ofstream of("DumpedItems.txt", std::ios::trunc);
-
-                of << ss.str();
-                of.close();
-            }
+                AdminActions::DumpItems();
             else if (PlaylistClass && ImGui::Button("Dump Playlists"))
-            {
-                std::stringstream ss;
-
-                ss << "Generated by Erbium (https://github.com/plooshi/Erbium)\n";
-                char version[6];
-
-                sprintf_s(version, VersionInfo.FortniteVersion >= 5.00 || VersionInfo.FortniteVersion < 1.2 ? "%.2f" : "%.1f", VersionInfo.FortniteVersion);
-                ss << "Fortnite version: " << version << "\n\n";
-
-                auto RarityEnum = EFortRarity::StaticEnum();
-                for (int i = 0; i < TUObjectArray::Num(); i++)
-                {
-                    auto Object = TUObjectArray::GetObjectByIndex(i);
-                    if (!Object || !Object->Class || Object->IsDefaultObject() || !Object->IsA<UFortPlaylistAthena>())
-                        continue;
-                    auto Playlist = (UFortPlaylistAthena*)Object;
-
-                    FString Name = UKismetTextLibrary::Conv_TextToString(Playlist->UIDisplayName);
-
-                    ss << "- " << UKismetSystemLibrary::GetPathName(Playlist).ToString() << "\n";
-                    ss << "-     Name: " << (Name.GetData() ? Name.ToString() : "None") << "\n";
-                    if (Playlist->HasMaxPlayers())
-                        ss << "-     Max players: " << std::to_string(Playlist->MaxPlayers) << "\n";
-                    if (Playlist->HasMaxSquadSize())
-                        ss << "-     Squad size: " << std::to_string(Playlist->MaxSquadSize) << "\n";
-                }
-
-                std::ofstream of("DumpedPlaylists.txt", std::ios::trunc);
-
-                of << ss.str();
-                of.close();
-            }
+                AdminActions::DumpPlaylists();
 
             break;
         }
@@ -538,5 +387,6 @@ void GUI::Init()
     g_pd3dDevice->Release();
     DestroyWindow(hWnd);
     UnregisterClass(wc.lpszClassName, wc.hInstance);
-    TerminateProcess(GetCurrentProcess(), 0);
+    Matchmaker::DeleteServer();
+    exit(0);
 }

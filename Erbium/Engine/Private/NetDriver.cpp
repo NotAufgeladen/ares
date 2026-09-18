@@ -3,6 +3,8 @@
 #include "../../Erbium/Public/Configuration.h"
 #include "../../Erbium/Public/Finders.h"
 #include "../../Erbium/Public/GUI.h"
+#include "../../Erbium/Public/Misc.h"
+#include "../../Erbium/Public/Matchmaker.h"
 #include "../../FortniteGame/Public/BattleRoyaleGamePhaseLogic.h"
 #include "../../FortniteGame/Public/FortGameMode.h"
 
@@ -506,7 +508,6 @@ void UNetDriver::TickFlush(UNetDriver* Driver, float DeltaSeconds)
              (FConfiguration::bAutoRestart || (FConfiguration::WebhookURL && *FConfiguration::WebhookURL) || (VersionInfo.FortniteVersion >= 18 && VersionInfo.FortniteVersion < 25.20)))
     {
         auto WorldNetDriver = UWorld::GetWorld()->NetDriver;
-        auto GameMode = (AFortGameMode*)UWorld::GetWorld()->AuthorityGameMode;
         if (Driver == WorldNetDriver && Driver->ClientConnections.Num() == 0)
         {
             static bool stopped = false;
@@ -515,37 +516,12 @@ void UNetDriver::TickFlush(UNetDriver* Driver, float DeltaSeconds)
             {
                 stopped = true;
 
-                if constexpr (FConfiguration::WebhookURL && *FConfiguration::WebhookURL)
-                {
-                    auto curl = curl_easy_init();
+                Misc::SendWebhook("Match has ended!", { { "Playlist", Misc::GetPlaylistName() } });
 
-                    curl_easy_setopt(curl, CURLOPT_URL, FConfiguration::WebhookURL);
-                    curl_slist* headers = curl_slist_append(NULL, "Content-Type: application/json");
-                    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-                    char version[6];
-
-                    sprintf_s(version, VersionInfo.FortniteVersion >= 5.00 || VersionInfo.FortniteVersion < 1.2 ? "%.2f" : "%.1f", VersionInfo.FortniteVersion);
-
-                    auto Playlist = VersionInfo.FortniteVersion >= 3.5 && GameMode->HasWarmupRequiredPlayerCount()
-                                        ? (GameMode->GameState->HasCurrentPlaylistInfo() ? GameMode->GameState->CurrentPlaylistInfo.BasePlaylist : GameMode->GameState->CurrentPlaylistData)
-                                        : nullptr;
-                    auto payload = UEAllocatedString("{\"embeds\": [{\"title\": \"Match has ended!\", \"fields\": [{\"name\":\"Version\",\"value\":\"") + version + "\"}, {\"name\":\"Playlist\",\"value\":\"" +
-                                   (Playlist ? Playlist->PlaylistName.ToString() : "Playlist_DefaultSolo") + "\"}], \"color\": " +
-                                   "\"7237230\", \"footer\": {\"text\":\"Erbium\", "
-                                   "\"icon_url\":\"https://cdn.discordapp.com/attachments/1341168629378584698/1436803905119064105/"
-                                   "L0WnFa.png.png?ex=6910ef69&is=690f9de9&hm=01a0888b46647959b38ee58df322048ab49e2a5a678e52d4502d9c5e3978d805&\"}, \"timestamp\":\"" +
-                                   iso8601() + "\"}] }";
-
-                    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-
-                    curl_easy_perform(curl);
-
-                    curl_easy_cleanup(curl);
-                }
+                Matchmaker::DeleteServer();
 
                 if (FConfiguration::bAutoRestart)
-                    TerminateProcess(GetCurrentProcess(), 0);
+                    exit(0);
             }
         }
     }
@@ -576,7 +552,6 @@ void UNetDriver::TickFlush__RepGraph(UNetDriver* Driver, float DeltaSeconds)
         else if (GUI::gsStatus == StartedMatch && (FConfiguration::bAutoRestart || (FConfiguration::WebhookURL && *FConfiguration::WebhookURL) || VersionInfo.FortniteVersion >= 18))
         {
             auto WorldNetDriver = UWorld::GetWorld()->NetDriver;
-            auto GameMode = (AFortGameMode*)UWorld::GetWorld()->AuthorityGameMode;
             if (Driver == WorldNetDriver && Driver->ClientConnections.Num() == 0)
             {
                 static bool stopped = false;
@@ -585,37 +560,12 @@ void UNetDriver::TickFlush__RepGraph(UNetDriver* Driver, float DeltaSeconds)
                 {
                     stopped = true;
 
-                    if constexpr (FConfiguration::WebhookURL && *FConfiguration::WebhookURL)
-                    {
-                        auto curl = curl_easy_init();
+                    Misc::SendWebhook("Match has ended!", { { "Playlist", Misc::GetPlaylistName() } });
 
-                        curl_easy_setopt(curl, CURLOPT_URL, FConfiguration::WebhookURL);
-                        curl_slist* headers = curl_slist_append(NULL, "Content-Type: application/json");
-                        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-                        char version[6];
-
-                        sprintf_s(version, VersionInfo.FortniteVersion >= 5.00 || VersionInfo.FortniteVersion < 1.2 ? "%.2f" : "%.1f", VersionInfo.FortniteVersion);
-
-                        auto Playlist = VersionInfo.FortniteVersion >= 3.5 && GameMode->HasWarmupRequiredPlayerCount()
-                                            ? (GameMode->GameState->HasCurrentPlaylistInfo() ? GameMode->GameState->CurrentPlaylistInfo.BasePlaylist : GameMode->GameState->CurrentPlaylistData)
-                                            : nullptr;
-                        auto payload = UEAllocatedString("{\"embeds\": [{\"title\": \"Match has ended!\", \"fields\": [{\"name\":\"Version\",\"value\":\"") + version + "\"}, {\"name\":\"Playlist\",\"value\":\"" +
-                                       (Playlist ? Playlist->PlaylistName.ToString() : "Playlist_DefaultSolo") + "\"}], \"color\": " +
-                                       "\"7237230\", \"footer\": {\"text\":\"Erbium\", "
-                                       "\"icon_url\":\"https://cdn.discordapp.com/attachments/1341168629378584698/1436803905119064105/"
-                                       "L0WnFa.png.png?ex=6910ef69&is=690f9de9&hm=01a0888b46647959b38ee58df322048ab49e2a5a678e52d4502d9c5e3978d805&\"}, \"timestamp\":\"" +
-                                       iso8601() + "\"}] }";
-
-                        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-
-                        curl_easy_perform(curl);
-
-                        curl_easy_cleanup(curl);
-                    }
+                    Matchmaker::DeleteServer();
 
                     if (FConfiguration::bAutoRestart)
-                        TerminateProcess(GetCurrentProcess(), 0);
+                        exit(0);
                 }
             }
         }
@@ -702,7 +652,6 @@ void UNetDriver::TickFlush__Iris(UNetDriver* Driver, float DeltaSeconds)
     else if (GUI::gsStatus == StartedMatch && (FConfiguration::bAutoRestart || (FConfiguration::WebhookURL && *FConfiguration::WebhookURL) || VersionInfo.FortniteVersion < 25.20))
     {
         auto WorldNetDriver = UWorld::GetWorld()->NetDriver;
-        auto GameMode = (AFortGameMode*)UWorld::GetWorld()->AuthorityGameMode;
         if (Driver == WorldNetDriver && Driver->ClientConnections.Num() == 0)
         {
             static bool stopped = false;
@@ -711,37 +660,12 @@ void UNetDriver::TickFlush__Iris(UNetDriver* Driver, float DeltaSeconds)
             {
                 stopped = true;
 
-                if constexpr (FConfiguration::WebhookURL && *FConfiguration::WebhookURL)
-                {
-                    auto curl = curl_easy_init();
+                Misc::SendWebhook("Match has ended!", { { "Playlist", Misc::GetPlaylistName() } });
 
-                    curl_easy_setopt(curl, CURLOPT_URL, FConfiguration::WebhookURL);
-                    curl_slist* headers = curl_slist_append(NULL, "Content-Type: application/json");
-                    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-                    char version[6];
-
-                    sprintf_s(version, VersionInfo.FortniteVersion >= 5.00 || VersionInfo.FortniteVersion < 1.2 ? "%.2f" : "%.1f", VersionInfo.FortniteVersion);
-
-                    auto Playlist = VersionInfo.FortniteVersion >= 3.5 && GameMode->HasWarmupRequiredPlayerCount()
-                                        ? (GameMode->GameState->HasCurrentPlaylistInfo() ? GameMode->GameState->CurrentPlaylistInfo.BasePlaylist : GameMode->GameState->CurrentPlaylistData)
-                                        : nullptr;
-                    auto payload = UEAllocatedString("{\"embeds\": [{\"title\": \"Match has ended!\", \"fields\": [{\"name\":\"Version\",\"value\":\"") + version + "\"}, {\"name\":\"Playlist\",\"value\":\"" +
-                                   (Playlist ? Playlist->PlaylistName.ToString() : "Playlist_DefaultSolo") + "\"}], \"color\": " +
-                                   "\"7237230\", \"footer\": {\"text\":\"Erbium\", "
-                                   "\"icon_url\":\"https://cdn.discordapp.com/attachments/1341168629378584698/1436803905119064105/"
-                                   "L0WnFa.png.png?ex=6910ef69&is=690f9de9&hm=01a0888b46647959b38ee58df322048ab49e2a5a678e52d4502d9c5e3978d805&\"}, \"timestamp\":\"" +
-                                   iso8601() + "\"}] }";
-
-                    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-
-                    curl_easy_perform(curl);
-
-                    curl_easy_cleanup(curl);
-                }
+                Matchmaker::DeleteServer();
 
                 if (FConfiguration::bAutoRestart)
-                    TerminateProcess(GetCurrentProcess(), 0);
+                    exit(0);
             }
         }
     }

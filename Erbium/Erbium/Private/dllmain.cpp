@@ -7,12 +7,11 @@
 #include "../Public/Finders.h"
 #include "../Public/GUI.h"
 #include "../Public/Misc.h"
+#include "../Public/Matchmaker.h"
 #include "../Public/Utils.h"
 #include <chrono>
 #include <iostream>
 #include <thread>
-#pragma comment(lib, "libcurl/libcurl.lib")
-#pragma comment(lib, "libcurl/zlib.lib")
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "Wldap32.lib")
 #pragma comment(lib, "Crypt32.lib")
@@ -20,10 +19,10 @@
 
 void Main()
 {
-    if constexpr (!FConfiguration::bGUI)
+    if (!FConfiguration::bGUI)
         AllocConsole();
 
-    if constexpr (!FConfiguration::bGUI || !FConfiguration::bUseStdoutLog)
+    if (!FConfiguration::bGUI || !FConfiguration::bUseStdoutLog)
     {
         if (!FConfiguration::bGUI || GetConsoleWindow())
         {
@@ -40,9 +39,9 @@ void Main()
     printf("Initializing SDK...\n");
     SDK::Init();
 
-    if constexpr (FConfiguration::bGUI)
+    if (FConfiguration::bGUI)
     {
-        if constexpr (FConfiguration::bUseStdoutLog)
+        if (FConfiguration::bUseStdoutLog)
         {
             FILE* s;
             freopen_s(&s, "stdout.log", "w", stdout);
@@ -142,14 +141,22 @@ void Main()
     }
     UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), FString(L"log LogSpecialEventScript VeryVerbose"), nullptr);
 
+    // the bot manager retries navmesh caching every second on maps without a navmesh and spams the console
+    UKismetSystemLibrary::ExecuteConsoleCommand(UWorld::GetWorld(), FString(L"log LogAthenaBots Off"), nullptr);
+
 #ifdef CLIENT
     Misc::InitClient();
 
     return;
 #endif
 
-    if constexpr (FConfiguration::WebhookURL && *FConfiguration::WebhookURL)
-        curl_global_init(CURL_GLOBAL_ALL);
+    // Register as soon as the dedicated-server DLL has finished SDK setup.
+    // Joinability is updated separately once ReadyToStartMatch reaches the
+    // ready branch. This used to be deferred because CPR crashed while making
+    // its first handle; WinHTTP has no process-global initialization hazard.
+    printf("[Matchmaker] Starting server registration...\n");
+    fflush(stdout);
+    Matchmaker::CreateServer();
 
     sprintf_s(GUI::windowTitle,
               VersionInfo.EngineVersion >= 5.0 ? "Erbium (FN %.2f, UE %.1f): Setting up"
@@ -237,6 +244,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     {
     case DLL_PROCESS_ATTACH:
         std::thread(Main).detach();
+        break;
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
     case DLL_PROCESS_DETACH:

@@ -1,0 +1,10 @@
+#ifndef CPR_CPRVER_H
+#define CPR_CPRVER_H
+
+#define CPR_VERSION "1.10.5"
+#define CPR_VERSION_MAJOR 1
+#define CPR_VERSION_MINOR 10
+#define CPR_VERSION_PATCH 5
+#define CPR_VERSION_NUM 0x010A05
+
+#endif

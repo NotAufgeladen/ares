@@ -117,6 +117,18 @@
     <ClInclude Include="Erbium\Public\Finders.h">
       <Filter>Erbium\Public</Filter>
     </ClInclude>
+    <ClInclude Include="Erbium\Public\AdminActions.h">
+      <Filter>Erbium\Public</Filter>
+    </ClInclude>
+    <ClInclude Include="Erbium\Public\FontData.h">
+      <Filter>Erbium\Public</Filter>
+    </ClInclude>
+    <ClInclude Include="Erbium\Public\HttpClient.h">
+      <Filter>Erbium\Public</Filter>
+    </ClInclude>
+    <ClInclude Include="Erbium\Public\Matchmaker.h">
+      <Filter>Erbium\Public</Filter>
+    </ClInclude>
     <ClInclude Include="Erbium\Public\Misc.h">
       <Filter>Erbium\Public</Filter>
     </ClInclude>
@@ -139,6 +151,9 @@
       <Filter>Erbium\Public</Filter>
     </ClInclude>
     <ClInclude Include="FortniteGame\Public\BuildingItemCollectorActor.h">
+      <Filter>FortniteGame\Public</Filter>
+    </ClInclude>
+    <ClInclude Include="FortniteGame\Public\BuildingItemWeaponUpgradeActor.h">
       <Filter>FortniteGame\Public</Filter>
     </ClInclude>
     <ClInclude Include="Erbium\Public\Events.h">
@@ -235,6 +250,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Erbium\Private\dllmain.cpp">
+      <Filter>Erbium\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="Erbium\Private\Matchmaker.cpp">
+      <Filter>Erbium\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="Erbium\Private\HttpClient.cpp">
+      <Filter>Erbium\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="Erbium\Private\AdminActions.cpp">
       <Filter>Erbium\Private</Filter>
     </ClCompile>
     <ClCompile Include="Erbium\Private\Misc.cpp">

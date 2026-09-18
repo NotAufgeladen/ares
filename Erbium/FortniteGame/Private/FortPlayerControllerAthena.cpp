@@ -4,8 +4,10 @@
 #include "../../Erbium/Public/Events.h"
 #include "../../Erbium/Public/GUI.h"
 #include "../../Erbium/Public/LateGame.h"
+#include "../../Erbium/Public/Matchmaker.h"
 #include "../Public/BattleRoyaleGamePhaseLogic.h"
 #include "../Public/BuildingItemCollectorActor.h"
+#include "../Public/BuildingItemWeaponUpgradeActor.h"
 #include "../Public/BuildingSMActor.h"
 #include "../Public/FortAthenaCreativePortal.h"
 #include "../Public/FortGameMode.h"
@@ -608,8 +610,7 @@ void AFortPlayerControllerAthena::ServerCreateBuildingActor(UObject* Context, FF
     if (!BuildingClass)
         return;
 
-    auto PlayerPawn = PlayerController->Pawn ? PlayerController->Pawn : PlayerController->MyFortPawn;
-    if (PlayerPawn && IsPawnInBuildFootprint(BuildingClass, BuildLoc, BuildRot, PlayerPawn->K2_GetActorLocation()))
+    if (PlayerController->MyFortPawn && IsPawnInBuildFootprint(BuildingClass, BuildLoc, BuildRot, PlayerController->MyFortPawn->K2_GetActorLocation()))
         return;
 
     UFortWorldItem* Item = nullptr;
@@ -1409,7 +1410,8 @@ void AFortPlayerControllerAthena::ClientOnPawnDied(AFortPlayerControllerAthena* 
         }
     }
 
-    return ClientOnPawnDiedOG(PlayerController, DeathReport);
+    ClientOnPawnDiedOG(PlayerController, DeathReport);
+
 }
 
 void AFortPlayerControllerAthena::ServerClientIsReadyToRespawn(UObject* Context, FFrame& Stack)
@@ -2775,6 +2777,172 @@ void AFortPlayerControllerAthena::ServerAttemptInteract_(UObject* Context, FFram
         printf("yo %s\n", LockDevice->LockableObject->Name.ToString().c_str());
         LockDevice->CurrentLockState = 1;
         LockDevice->OnRep_CurrentLockState();
+    }
+
+    // weapon upgrade bench ("Wumba"): swaps the held weapon for the upgraded/sidegraded one and removes the mats
+    else if (ReceivingActor->IsA(ABuildingItemWeaponUpgradeActor::StaticClass()))
+    {
+        auto Wumba = ReceivingActor->Cast<ABuildingItemWeaponUpgradeActor>();
+
+        // 15.00+: which interaction was attempted (SecondInteraction = sidegrade on the left)
+        uint8_t InteractionBeingAttempted = 0;
+        if (auto Param = (const UField*)Stack.Node->GetChildProperties(); VersionInfo.FortniteVersion >= 15)
+        {
+            for (; Param; Param = Param->FField_GetNext())
+            {
+                if (Param->FField_GetName() == FName(L"InteractionBeingAttempted"))
+                {
+                    auto& Value = *(uint8_t*)(__int64(Stack.Locals) + GetFromOffset<uint32_t>(Param, Offsets::Offset_Internal));
+                    if (Value == 1) // EInteractionBeingAttempted::SecondInteraction
+                        InteractionBeingAttempted = 1;
+                    break;
+                }
+            }
+        }
+
+        // <15.00: the bench has a single interaction; use the material the bench is set to (from its LootTierGroup) to pick the row
+        uint8_t MaterialIdx = 0; // 0 = wood, 1 = stone/brick, 2 = metal
+        if (VersionInfo.FortniteVersion < 15)
+        {
+            if (auto TierGroupProp = Wumba->GetProperty("UpgradeLootTierGroup"))
+            {
+                auto& TierGroup = GetFromOffset<FName>(Wumba, GetFromOffset<uint32_t>(TierGroupProp, Offsets::Offset_Internal));
+
+                if (TierGroup.ToString().contains("Metal"))
+                    MaterialIdx = 2;
+                else if (TierGroup.ToString().contains("Brick"))
+                    MaterialIdx = 1;
+            }
+        }
+
+        static auto WumbaDataTable = FindObject<UDataTable>(L"/Game/Items/Datatables/AthenaWumbaData.AthenaWumbaData");
+        auto CurrentWeapon = Pawn->CurrentWeapon ? Pawn->CurrentWeapon->Cast<AFortWeapon>() : nullptr;
+
+        if (!WumbaDataTable || !CurrentWeapon || !CurrentWeapon->WeaponData)
+        {
+            ServerAttemptInteract_OG(Context, Stack);
+            sendStat();
+            return;
+        }
+
+        auto CurrentWeaponDef = CurrentWeapon->WeaponData;
+        auto Direction = InteractionBeingAttempted == 1 ? EFortWeaponUpgradeDirection::Horizontal : EFortWeaponUpgradeDirection::Vertical;
+
+        FWeaponUpgradeItemRow* FoundRow = nullptr;
+
+        for (auto& [RowName, RowPtr] : WumbaDataTable->RowMap)
+        {
+            auto Row = (FWeaponUpgradeItemRow*)RowPtr;
+
+            if (!Row || Row->CurrentWeaponDef != CurrentWeaponDef)
+                continue;
+
+            // pre-15.00 benches only have vertical rows and one material per bench
+            if (VersionInfo.FortniteVersion >= 15)
+            {
+                if (Row->Direction != Direction)
+                    continue;
+            }
+            else if (MaterialIdx == 0 && !Row->WoodCost)
+                continue;
+            else if (MaterialIdx == 1 && !Row->BrickCost)
+                continue;
+            else if (MaterialIdx == 2 && !Row->MetalCost)
+                continue;
+
+            FoundRow = Row;
+            break;
+        }
+
+        if (!FoundRow || !FoundRow->UpgradedWeaponDef)
+        {
+            printf("[UpgradeBench] No row found for %s\n", CurrentWeaponDef->Name.ToString().c_str());
+            ServerAttemptInteract_OG(Context, Stack);
+            sendStat();
+            return;
+        }
+
+        auto NewDefinition = FoundRow->UpgradedWeaponDef;
+
+        int WoodCost = (int)FoundRow->WoodCost * 50;
+        int StoneCost = (int)FoundRow->BrickCost * 50 - 400;
+        int MetalCost = (int)FoundRow->MetalCost * 50 - 200;
+
+        if (InteractionBeingAttempted == 1)
+        {
+            WoodCost = 20;
+            StoneCost = 20;
+            MetalCost = 20;
+        }
+
+        static auto WoodItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/WoodItemData.WoodItemData");
+        static auto StoneItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/StoneItemData.StoneItemData");
+        static auto MetalItemData = FindObject<UFortItemDefinition>(L"/Game/Items/ResourcePickups/MetalItemData.MetalItemData");
+        const UFortItemDefinition* CostItems[3] = { WoodItemData, StoneItemData, MetalItemData };
+        int Costs[3] = { WoodCost, StoneCost, MetalCost };
+
+        auto WorldInventory = PlayerController->WorldInventory;
+
+        if (!WorldInventory)
+            return;
+
+        // make sure the player has all mats before touching the inventory
+        for (int i = 0; i < 3; i++)
+        {
+            if (Costs[i] <= 0)
+                continue;
+
+            auto Count = 0;
+
+            if (auto Entry = WorldInventory->Inventory.ReplicatedEntries.Search([&](FFortItemEntry& entry) { return entry.ItemDefinition == CostItems[i]; }, FFortItemEntry::Size()))
+                Count = Entry->Count;
+
+            if (!CostItems[i] || Count < Costs[i])
+            {
+                if (auto FX = Wumba->GetFunction("PlayVendFailFX"))
+                    Wumba->Call(FX);
+
+                ServerAttemptInteract_OG(Context, Stack);
+                sendStat();
+                return;
+            }
+        }
+
+        // remove the mats
+        for (int i = 0; i < 3; i++)
+        {
+            if (Costs[i] <= 0)
+                continue;
+
+            auto Entry = WorldInventory->Inventory.ReplicatedEntries.Search([&](FFortItemEntry& entry) { return entry.ItemDefinition == CostItems[i]; }, FFortItemEntry::Size());
+
+            if (!Entry)
+                continue;
+
+            Entry->Count -= Costs[i];
+            if (Entry->Count <= 0)
+                WorldInventory->Remove(Entry->ItemGuid);
+            else
+                WorldInventory->UpdateEntry(*Entry);
+        }
+
+        // swap the weapon
+        WorldInventory->Remove(CurrentWeapon->ItemEntryGuid);
+        WorldInventory->GiveItem(NewDefinition, 1, AFortInventory::GetStats(NewDefinition) ? AFortInventory::GetStats(NewDefinition)->ClipSize : 0);
+
+        auto NewItemEntry = WorldInventory->Inventory.ReplicatedEntries.Search([&](FFortItemEntry& entry) { return entry.ItemDefinition == NewDefinition; }, FFortItemEntry::Size());
+        if (NewItemEntry)
+        {
+            PlayerController->ServerExecuteInventoryItem(NewItemEntry->ItemGuid);
+            PlayerController->ClientEquipItem(NewItemEntry->ItemGuid, true);
+        }
+
+        if (auto FX = Wumba->GetFunction("PlayVendFX"))
+            Wumba->Call(FX);
+
+        ServerAttemptInteract_OG(Context, Stack);
+        sendStat();
+        return;
     }
 
     ServerAttemptInteract_OG(Context, Stack);

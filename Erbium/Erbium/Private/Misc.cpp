@@ -7,11 +7,59 @@
 #include "../../FortniteGame/Public/FortWeapon.h"
 #include "../Public/Configuration.h"
 #include "../Public/Finders.h"
+#include "../Public/HttpClient.h"
 #include <algorithm>
 
 int Misc::GetNetMode()
 {
     return 1;
+}
+
+void Misc::SendWebhook(const std::string& Title, const std::vector<std::pair<std::string, std::string>>& Fields, int Color)
+{
+    if constexpr (!(FConfiguration::WebhookURL && *FConfiguration::WebhookURL))
+        return;
+
+    char version[6];
+    sprintf_s(version, VersionInfo.FortniteVersion >= 5.00 || VersionInfo.FortniteVersion < 1.2 ? "%.2f" : "%.1f", VersionInfo.FortniteVersion);
+
+    std::string payload = std::string("{\"embeds\": [{\"title\": \"") + Title + "\", \"fields\": [";
+
+    bool bFirstField = true;
+    auto AddField = [&](const std::string& Name, const std::string& Value)
+    {
+        if (!bFirstField)
+            payload += ",";
+        bFirstField = false;
+
+        payload += "{\"name\":\"" + Name + "\",\"value\":\"" + Value + "\"}";
+    };
+
+    AddField("Version", version);
+    for (auto& [Name, Value] : Fields)
+        AddField(Name, Value);
+
+    // color used to be serialized with a stray quote pair (\"7237230\"), which is invalid JSON
+    payload += "], \"color\": " + std::to_string(Color);
+    payload += ", \"footer\": {\"text\":\"Erbium\"}, \"timestamp\":\"";
+    payload += iso8601().c_str();
+    payload += "\"}] }";
+
+    const auto Response = HttpClient::Request("POST", FConfiguration::WebhookURL, payload);
+    if (!Response.IsTransportSuccess())
+        printf("[Misc] Webhook failed: %s\n", Response.Error.c_str());
+    else if (!Response.IsHttpSuccess())
+        printf("[Misc] Webhook returned HTTP %ld: %s\n", Response.StatusCode, Response.Body.c_str());
+}
+
+std::string Misc::GetPlaylistName()
+{
+    auto GameMode = (AFortGameMode*)UWorld::GetWorld()->AuthorityGameMode;
+    auto Playlist = VersionInfo.FortniteVersion >= 3.5 && GameMode->HasWarmupRequiredPlayerCount()
+                        ? (GameMode->GameState->HasCurrentPlaylistInfo() ? GameMode->GameState->CurrentPlaylistInfo.BasePlaylist : GameMode->GameState->CurrentPlaylistData)
+                        : nullptr;
+
+    return Playlist ? Playlist->PlaylistName.ToString().c_str() : "Playlist_DefaultSolo";
 }
 
 void* Misc::SendRequestNow(void* Arg1, void* MCPData, int)
