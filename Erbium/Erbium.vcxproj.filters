@@ -129,6 +129,9 @@
     <ClInclude Include="Erbium\Public\Matchmaker.h">
       <Filter>Erbium\Public</Filter>
     </ClInclude>
+    <ClInclude Include="Erbium\Public\Moderation.h">
+      <Filter>Erbium\Public</Filter>
+    </ClInclude>
     <ClInclude Include="Erbium\Public\Misc.h">
       <Filter>Erbium\Public</Filter>
     </ClInclude>
@@ -253,6 +256,9 @@
       <Filter>Erbium\Private</Filter>
     </ClCompile>
     <ClCompile Include="Erbium\Private\Matchmaker.cpp">
+      <Filter>Erbium\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="Erbium\Private\Moderation.cpp">
       <Filter>Erbium\Private</Filter>
     </ClCompile>
     <ClCompile Include="Erbium\Private\HttpClient.cpp">

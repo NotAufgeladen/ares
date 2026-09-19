@@ -5,6 +5,7 @@
 #include "../../Erbium/Public/GUI.h"
 #include "../../Erbium/Public/Misc.h"
 #include "../../Erbium/Public/Matchmaker.h"
+#include "../../Erbium/Public/Moderation.h"
 #include "../../FortniteGame/Public/BattleRoyaleGamePhaseLogic.h"
 #include "../../FortniteGame/Public/FortGameMode.h"
 
@@ -526,6 +527,7 @@ void UNetDriver::TickFlush(UNetDriver* Driver, float DeltaSeconds)
         }
     }
 
+    Moderation::Tick(Driver);
     Matchmaker::TickShutdown(Driver);
     return TickFlushOG(Driver, DeltaSeconds);
 }
@@ -572,6 +574,7 @@ void UNetDriver::TickFlush__RepGraph(UNetDriver* Driver, float DeltaSeconds)
         }
     }
 
+    Moderation::Tick(Driver);
     Matchmaker::TickShutdown(Driver);
     return TickFlushOG(Driver, DeltaSeconds);
 }
@@ -672,6 +675,7 @@ void UNetDriver::TickFlush__Iris(UNetDriver* Driver, float DeltaSeconds)
         }
     }
 
+    Moderation::Tick(Driver);
     Matchmaker::TickShutdown(Driver);
     return TickFlushOG(Driver, DeltaSeconds);
 }

@@ -3585,7 +3585,8 @@ void FindNullsAndRetTrues()
         else
             RetTrueFuncs.push_back(Memcury::Scanner::FindPattern("48 8B C4 48 89 58 08 48 89 70 10 48 89 78 18 4C 89 60 20 55 41 56 41 57 48 8B EC 48 83 EC 60 49 8B D9 45 8A").Get());
     }
-    RetTrueFuncs.push_back(FindKickPlayer());
+    // Moderation installs an equivalent return-true detour and retains the
+    // original trampoline so explicitly authorized kicks can still execute.
 
     if (VersionInfo.FortniteVersion >= 23)
     {

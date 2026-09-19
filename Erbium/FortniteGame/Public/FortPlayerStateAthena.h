@@ -78,6 +78,7 @@ public:
     DEFINE_FUNC(ClientReportTeamKill, void);
     DEFINE_FUNC(OnRep_Place, void);
     DEFINE_FUNC(OnRep_SeasonLevelUIDisplay, void);
+    DEFINE_FUNC(GetPlayerName, FString);
     DEFINE_FUNC(OnRep_PlayerName, void);
     DEFINE_FUNC(OnRep_ReplicatedTeamMemberState, void);
 };

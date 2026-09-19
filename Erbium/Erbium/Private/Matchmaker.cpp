@@ -57,6 +57,8 @@ void Matchmaker::ParseLaunchArgs()
     Region = GetLaunchArg(L"-region", Region);
     Playlist = GetLaunchArg(L"-playlist", Playlist);
     OwnedBy = GetLaunchArg(L"-ownedby", OwnedBy);
+    ModerationUrl = GetLaunchArg(L"-moderationurl", ModerationUrl);
+    ModerationKey = GetLaunchArg(L"-moderationkey", FConfiguration::ApiKey);
 }
 
 bool Matchmaker::IsEnabled()

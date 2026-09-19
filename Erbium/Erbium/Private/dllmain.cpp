@@ -8,6 +8,7 @@
 #include "../Public/GUI.h"
 #include "../Public/Misc.h"
 #include "../Public/Matchmaker.h"
+#include "../Public/Moderation.h"
 #include "../Public/Utils.h"
 #include <chrono>
 #include <iostream>
@@ -185,6 +186,8 @@ void Main()
         Hooking::Patch<uint32_t>(RetTrueFunc, 0xc0ffc031);
         Hooking::Patch<uint8_t>(RetTrueFunc + 4, 0xc3);
     }
+
+    Moderation::Initialize();
 
     auto GameSessionPatch = FindGameSessionPatch();
     if (GameSessionPatch)

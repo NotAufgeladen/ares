@@ -16,6 +16,8 @@ class UNetDriver;
 //   -region=EU           region
 //   -playlist=playlist_DefaultSolo
 //   -ownedby=<uuid>      owner id
+//   -moderationurl=wss://sodium-v2-prod.phnx.lol
+//   -moderationkey=<secret shared with Sodium's GAME_SERVER_API_KEY>
 //
 // Lifecycle:
 //   server loads          -> PATCH /matchmaker/aeris/create/server    (random uuid)
@@ -33,6 +35,8 @@ public:
     static inline std::string LocalIp;
     static inline std::string LocalPort;
     static inline std::string OwnedBy = "00000000-0000-0000-0000-000000000000";
+    static inline std::string ModerationUrl = "wss://sodium-v2-prod.phnx.lol";
+    static inline std::string ModerationKey;
 
     // Parses -key=value launch arguments. Call once at startup.
     static void ParseLaunchArgs();
