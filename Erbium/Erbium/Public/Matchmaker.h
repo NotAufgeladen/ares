@@ -3,6 +3,7 @@
 #include <string>
 
 class AFortGameMode;
+class UNetDriver;
 
 // Registers this server with the Aeris matchmaker backend and keeps its state
 // in sync. Enable by setting FConfiguration::ApiURL + ApiKey; everything is
@@ -48,10 +49,15 @@ public:
     // a native setter hook, which is unsafe on Fortnite 13.40.
     static void StartMatchEndMonitor(AFortGameMode* GameMode, int InProgressStateIndex);
 
+    // Advances a requested shutdown on the game thread. The first tick removes
+    // the backend registration and sends ClientEndGameKick to every connection;
+    // a later tick exits after the reliable client RPC has had time to flush.
+    static void TickShutdown(UNetDriver* Driver);
+
     // POST /matchmaker/AERIS/delete/server/<ServerId>/<apikey>
     static void DeleteServer();
 
-    // Deletes the backend record synchronously, then immediately terminates
-    // the dedicated-server process. Safe to call from multiple fallback paths.
+    // Requests an orderly shutdown. The game-thread TickShutdown path deletes
+    // the backend record, kicks connected players, and then exits.
     static void ShutdownServer(const char* Reason);
 };

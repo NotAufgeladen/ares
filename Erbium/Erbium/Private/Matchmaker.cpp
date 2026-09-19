@@ -3,9 +3,9 @@
 #include "../Public/Configuration.h"
 #include "../Public/HttpClient.h"
 #include "../Public/Misc.h"
+#include "../../Engine/Public/NetDriver.h"
 #include "../../FortniteGame/Public/FortGameMode.h"
 #include <exception>
-#include <mutex>
 #include <objbase.h>
 #include <string>
 #include <shellapi.h>
@@ -144,6 +144,53 @@ namespace
 AFortGameMode* MonitoredGameMode = nullptr;
 int MonitoredInProgressState = 0;
 volatile LONG MatchEndMonitorStarted = 0;
+volatile LONG ShutdownState = 0;
+ULONGLONG ShutdownDeadline = 0;
+constexpr ULONGLONG EndGameKickGraceMs = 2000;
+
+bool SendEndGameKick(AFortPlayerControllerAthena* PlayerController)
+{
+    if (!PlayerController)
+        return false;
+
+    static UFunction* ClientEndGameKick = nullptr;
+    static bool bLookedUpClientEndGameKick = false;
+    if (!bLookedUpClientEndGameKick)
+    {
+        bLookedUpClientEndGameKick = true;
+        ClientEndGameKick = PlayerController->GetFunction("ClientEndGameKick");
+    }
+
+    if (!ClientEndGameKick)
+        return false;
+
+    PlayerController->Call<void>(ClientEndGameKick);
+    return true;
+}
+
+int KickConnectedPlayers(UNetDriver* Driver)
+{
+    if (!Driver)
+        return 0;
+
+    int KickedPlayers = 0;
+    for (UNetConnection* Connection : Driver->ClientConnections)
+    {
+        if (!Connection)
+            continue;
+
+        if (SendEndGameKick(Connection->PlayerController))
+            ++KickedPlayers;
+
+        for (UNetConnection* ChildConnection : Connection->Children)
+        {
+            if (ChildConnection && SendEndGameKick(ChildConnection->PlayerController))
+                ++KickedPlayers;
+        }
+    }
+
+    return KickedPlayers;
+}
 
 DWORD WINAPI MatchEndMonitorThread(void*)
 {
@@ -228,19 +275,53 @@ void Matchmaker::DeleteServer()
                "/matchmaker/AERIS/delete/server/<id>/<redacted>");
 }
 
+void Matchmaker::TickShutdown(UNetDriver* Driver)
+{
+    LONG State = InterlockedCompareExchange(&ShutdownState, 0, 0);
+    if (State == 0 || !Driver)
+        return;
+
+    UWorld* World = UWorld::GetWorld();
+    if (!World || Driver != World->NetDriver)
+        return;
+
+    if (State == 1 && InterlockedCompareExchange(&ShutdownState, 2, 1) == 1)
+    {
+        // Do backend cleanup before notifying clients. End-game travel can
+        // begin tearing the process down as soon as ClientEndGameKick runs,
+        // so delaying this request until the final exit tick is unreliable.
+        printf("[Matchmaker] Deleting server registration before player kick.\n");
+        fflush(stdout);
+        DeleteServer();
+        Misc::SendWebhook("Match has ended!", { { "Playlist", Playlist } });
+
+        const int KickedPlayers = KickConnectedPlayers(Driver);
+        ShutdownDeadline = GetTickCount64() + EndGameKickGraceMs;
+        printf("[Matchmaker] Sent ClientEndGameKick to %d player(s); exiting in %llu ms.\n",
+               KickedPlayers, EndGameKickGraceMs);
+        fflush(stdout);
+        return;
+    }
+
+    if (State != 2 || GetTickCount64() < ShutdownDeadline)
+        return;
+
+    if (InterlockedCompareExchange(&ShutdownState, 3, 2) != 2)
+        return;
+
+    printf("[Matchmaker] Kick grace period elapsed; exiting now.\n");
+    fflush(stdout);
+
+    // Keep the server alive until after the reliable return-to-menu RPC has
+    // had an opportunity to leave the net driver's outgoing queues.
+    TerminateProcess(GetCurrentProcess(), 0);
+}
+
 void Matchmaker::ShutdownServer(const char* Reason)
 {
-    static bool bShutdownStarted = false;
-    if (bShutdownStarted)
+    if (InterlockedCompareExchange(&ShutdownState, 1, 0) != 0)
         return;
-    bShutdownStarted = true;
 
-    printf("[Matchmaker] %s; deleting server and exiting now.\n", Reason ? Reason : "Match ended");
+    printf("[Matchmaker] %s; orderly shutdown requested.\n", Reason ? Reason : "Match ended");
     fflush(stdout);
-    // Remove the backend listing first. A slow or unavailable optional webhook
-    // must never leave a finished server advertised as joinable.
-    DeleteServer();
-    Misc::SendWebhook("Match has ended!", { { "Playlist", Playlist } });
-    fflush(stdout);
-    TerminateProcess(GetCurrentProcess(), 0);
 }

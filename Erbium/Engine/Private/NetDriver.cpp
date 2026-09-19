@@ -526,6 +526,7 @@ void UNetDriver::TickFlush(UNetDriver* Driver, float DeltaSeconds)
         }
     }
 
+    Matchmaker::TickShutdown(Driver);
     return TickFlushOG(Driver, DeltaSeconds);
 }
 
@@ -571,6 +572,7 @@ void UNetDriver::TickFlush__RepGraph(UNetDriver* Driver, float DeltaSeconds)
         }
     }
 
+    Matchmaker::TickShutdown(Driver);
     return TickFlushOG(Driver, DeltaSeconds);
 }
 
@@ -670,6 +672,7 @@ void UNetDriver::TickFlush__Iris(UNetDriver* Driver, float DeltaSeconds)
         }
     }
 
+    Matchmaker::TickShutdown(Driver);
     return TickFlushOG(Driver, DeltaSeconds);
 }
 
